@@ -1,0 +1,88 @@
+import discord
+from discord.ext import commands
+import aiohttp
+import asyncio
+import json
+from datetime import datetime, timedelta
+
+TOKEN = 'Your Discord Token'
+API_PREDATOR_URL = 'Your API'
+ERROR_CHANNEL_ID = # Your Discord Error Channel ID
+APEX_PREDATOR_CHANNEL_ID = # Your Discord APEX PREDATOR CAP Channel ID
+
+intents = discord.Intents.default()
+intents.messages = True
+
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+async def send_error_embed(error_message, response_content=None):
+    embed = discord.Embed(title="Error Encountered", color=discord.Color.red())
+    embed.add_field(name="Error Message", value=error_message, inline=False)
+    if response_content:
+        embed.add_field(name="Response Content", value=f"```\n{response_content}\n```", inline=False)
+    channel = bot.get_channel(ERROR_CHANNEL_ID)
+    await channel.send(embed=embed)
+
+async def send_apex_pred_cap():
+    print("Sending Apex Predator cap...")  # Add this debug statement
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(API_PREDATOR_URL) as response:
+                if response.status != 200:
+                    error_message = f"Failed to fetch data from API. Status code: {response.status}"
+                    await send_error_embed(error_message)
+                    return
+
+                data = await response.text()
+
+        try:
+            data_json = json.loads(data)
+        except json.JSONDecodeError as e:
+            await send_error_embed("Unexpected response content", response_content=data)
+            print(f"JSON decode error: {e}")  # Add this debug statement
+            return
+
+        description = "<:ApexPred:1234667368098041906>  **Battle Royale**\n"
+
+        for platform, platform_data in data_json['RP'].items():
+            if platform == 'PC':
+                description += f"**{platform_data['val']} RP** on PC <:origin:1234749046808121435>\n"
+            elif platform == 'PS4':
+                description += f"**{platform_data['val']} RP** on Playstation <:pPS4:965283856334848031>\n"
+            elif platform == 'X1':
+                description += f"**{platform_data['val']} RP** on Xbox <:pEggbox:965283844452401172>\n"
+            elif platform == 'SWITCH':
+                description += f"**{platform_data['val']} RP** on Switch <:Switch:1234748520158855263>\n"
+
+        embed = discord.Embed(description=description, color=0xfc573e)
+        embed.set_footer(text="Data updated hourly. Info from ALS")
+        embed.title = "How many points to reach Apex Predator?"
+
+        channel = bot.get_channel(APEX_PREDATOR_CHANNEL_ID)
+        if channel:
+            await channel.send(embed=embed)
+            print("Embed sent successfully.")  # Add this debug statement
+        else:
+            print("Channel not found.")
+    except Exception as e:
+        error_message = f"Error fetching Apex Predator cap or sending embed: {e}"
+        await send_error_embed(error_message)
+
+
+async def send_hourly_updates():
+    now = datetime.now()
+    next_hour = now.replace(hour=now.hour + 1, minute=0, second=0, microsecond=0)
+    sleep_duration = (next_hour - now).total_seconds()
+    await asyncio.sleep(sleep_duration)
+    while True:
+        await send_apex_pred_cap()
+        await asyncio.sleep(3600)
+
+@bot.event
+async def on_ready():
+    print('Bot is ready.')
+    await send_apex_pred_cap()  # Sending Apex Predator embed on startup
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="the Apex Games"), status=discord.Status.online)
+    await send_hourly_updates()
+
+bot.run(TOKEN)
